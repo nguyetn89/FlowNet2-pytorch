@@ -35,8 +35,8 @@ def load_video_frames(in_path, dest_size=None, save_file=False):
             print("Error opening file", file)
         while cap.isOpened():
             ret, frame = cap.read()
-            frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             if ret:
+                frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                 if im_size is not None:
                     frame = cv2.resize(frame, im_size)
                 imgs.append(frame)
@@ -63,14 +63,14 @@ def load_video_frames(in_path, dest_size=None, save_file=False):
             assert data[0].shape[:2] == dest_size[::-1]
         return data
 
-    out_file = root + "_images.npy"
-    if os.path.exists(out_file):
-        data = np.load(out_file)
-        unique_shapes = np.unique([datum.shape for datum in data], axis=0)
-        assert len(unique_shapes) == 1
-        if dest_size is not None:
-            assert data[0].shape[:2] == dest_size[::-1]
-        return data
+    # out_file = root + "_images.npy"
+    # if os.path.exists(out_file):
+    #     data = np.load(out_file)
+    #     unique_shapes = np.unique([datum.shape for datum in data], axis=0)
+    #     assert len(unique_shapes) == 1
+    #     if dest_size is not None:
+    #         assert data[0].shape[:2] == dest_size[::-1]
+    #     return data
 
     if ext in (".avi", ".mp4"):   # process new data from video
         data = load_video(in_path, im_size=dest_size)
@@ -82,8 +82,8 @@ def load_video_frames(in_path, dest_size=None, save_file=False):
 
     data = np.array(data).astype(np.float32)
 
-    if save_file:
-        np.save(out_file, data)
+    # if save_file:
+    #     np.save(out_file, data)
     return data
 
 
@@ -94,6 +94,7 @@ if __name__ == '__main__':
     parser.add_argument("--rgb_max", type=float, default=255.)
     parser.add_argument("--in_path", type=str, default=None)
     parser.add_argument("--out_file", type=str, default=None)
+    parser.add_argument("--recalc", type=int, default=1)
     parser.add_argument("--batch", type=int, default=4)
     parser.add_argument("--height", type=int, default=128)
     parser.add_argument("--width", type=int, default=192)
@@ -133,44 +134,47 @@ if __name__ == '__main__':
         if args.visualize != 0:
             visualize_flow(data)
     else:
-        data = load_video_frames(args.in_path, dest_size=None)
-        n_frame = len(data) - 1  # -1 because we consider pairs of frames
-        outflows = []
-        for i in range(0, n_frame, args.batch):
-            # determine frame indices in batch
-            idx0, idx1 = i, min(i + args.batch, n_frame)
-            # forming data batch
-            frames_first = data[idx0:idx1]
-            frames_second = data[idx0+1:idx1+1]
-            if scale > 1:
-                frames_first = [cv2.resize(frame, upscaled_size) for frame in frames_first]
-                frames_second = [cv2.resize(frame, upscaled_size) for frame in frames_second]
-            pairs = list(zip(frames_first, frames_second))
-            # transpose data and feed into network
-            pairs = np.array([np.array(pair).transpose(3, 0, 1, 2) for pair in pairs])
-            im = torch.from_numpy(pairs.astype(np.float32)).to(device)
-            # get out optical flow
-            flows = net(im)
-            outflows += [cv2.resize(flow.data.cpu().numpy().transpose(1, 2, 0), base_size) for flow in flows]
-        outflows += [np.zeros_like(outflows[-1])]
-        outflows = np.array(outflows).astype(np.float32)
-        assert len(outflows) == len(data)
-        data = np.array([cv2.resize(img, base_size) for img in data])
-        print("imgs:", data.shape)
-        print("flows:", outflows.shape)
+        if os.path.exists(args.out_file) and args.recalc == 0:
+            print("File existed -> skip!!!")
+        else:
+            data = load_video_frames(args.in_path, dest_size=None)
+            n_frame = len(data) - 1  # -1 because we consider pairs of frames
+            outflows = []
+            for i in range(0, n_frame, args.batch):
+                # determine frame indices in batch
+                idx0, idx1 = i, min(i + args.batch, n_frame)
+                # forming data batch
+                frames_first = data[idx0:idx1]
+                frames_second = data[idx0+1:idx1+1]
+                if scale > 1:
+                    frames_first = [cv2.resize(frame, upscaled_size) for frame in frames_first]
+                    frames_second = [cv2.resize(frame, upscaled_size) for frame in frames_second]
+                pairs = list(zip(frames_first, frames_second))
+                # transpose data and feed into network
+                pairs = np.array([np.array(pair).transpose(3, 0, 1, 2) for pair in pairs])
+                im = torch.from_numpy(pairs.astype(np.float32)).to(device)
+                # get out optical flow
+                flows = net(im)
+                outflows += [cv2.resize(flow.data.cpu().numpy().transpose(1, 2, 0), base_size) for flow in flows]
+            outflows += [np.zeros_like(outflows[-1])]
+            outflows = np.array(outflows).astype(np.float32)
+            assert len(outflows) == len(data)
+            data = np.array([cv2.resize(img, base_size) for img in data])
+            print("imgs:", data.shape)
+            print("flows:", outflows.shape)
 
-        # concatenate data and save (n, h, w, c)
-        outdata = np.concatenate((data, outflows), axis=3)
-        np.save(args.out_file, outdata)
-        print("output data:", outdata.shape)
+            # concatenate data and save (n, h, w, c)
+            outdata = np.concatenate((data, outflows), axis=3)
+            np.save(args.out_file, outdata)
+            print("output data:", outdata.shape)
 
-        # visualizing only for checking
-        if args.visualize != 0:
-            data = np.load(args.out_file)
-            print("data shape:", data.shape)
-            plt.imshow(data[0, :, :, :3] / 255.)
-            plt.show()
-            visualize_flow(data[0, :, :, 3:])
-            plt.imshow(data[-2, :, :, :3] / 255.)
-            plt.show()
-            visualize_flow(data[-2, :, :, 3:])
+            # visualizing only for checking
+            if args.visualize != 0:
+                data = np.load(args.out_file)
+                print("data shape:", data.shape)
+                plt.imshow(data[0, :, :, :3] / 255.)
+                plt.show()
+                visualize_flow(data[0, :, :, 3:])
+                plt.imshow(data[-2, :, :, :3] / 255.)
+                plt.show()
+                visualize_flow(data[-2, :, :, 3:])
