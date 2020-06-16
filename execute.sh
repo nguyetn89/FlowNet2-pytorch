@@ -22,6 +22,27 @@ if [ "$dataset" == "UCSDped2" ]; then
             python3 run_flow_video.py --in_path="${in_path}/Test${i}" --out_file="${in_path}/Test${i}_full.npy" --scale 3 --recalc ${recalc}
         done
     fi
+elif [ "$dataset" == "UCSDped1" ]; then
+    recalc=1
+    echo "Processing dataset ${dataset}..."
+    if [[ "$subset" == "train" || "$subset" == "both" ]]; then
+        echo "Processing training data..."
+        in_path="${common}/UCSD_Anomaly_Dataset.v1p2/UCSDped1/Train"
+        for i in $(seq -w 001 034)
+        do
+            echo "clip ${i}"
+            python3 run_flow_video.py --in_path="${in_path}/Train${i}" --out_file="${in_path}/Train${i}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
+    if [[ "$subset" == "test" || "$subset" == "both" ]]; then
+        echo "Processing test data..."
+        in_path="${common}/UCSD_Anomaly_Dataset.v1p2/UCSDped1/Test"
+        for i in $(seq -w 001 036)
+        do
+            echo "clip ${i}"
+            python3 run_flow_video.py --in_path="${in_path}/Test${i}" --out_file="${in_path}/Test${i}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
 elif [ "$dataset" == "Avenue" ]; then
     recalc=1
     echo "Processing dataset ${dataset}..."
@@ -89,6 +110,44 @@ elif [ "$dataset" == "Train" ]; then
         echo "Processing test data..."
         in_path="${common}/Traffic-Train/test"
         python3 run_flow_video.py --in_path="${in_path}/001" --out_file="${in_path}/001_full.npy" --scale 3 --recalc ${recalc}
+    fi
+elif [ "$dataset" == "Exit" ]; then
+    recalc=0
+    echo "Processing dataset ${dataset}..."
+    if [[ "$subset" == "train" || "$subset" == "both" ]]; then
+        echo "Processing training data..."
+        in_path="${common}/Exit/train"
+        python3 run_flow_video.py --in_path="${in_path}/001" --out_file="${in_path}/001_full.npy" --scale 3 --recalc ${recalc}
+    fi
+    if [[ "$subset" == "test" || "$subset" == "both" ]]; then
+        echo "Processing test data..."
+        in_path="${common}/Exit/test"
+        for i in $(seq -w 001 030)
+        do
+            echo "clip ${i}"
+            python3 run_flow_video.py --in_path="${in_path}/${i}" --out_file="${in_path}/${i}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
+elif [ "$dataset" == "Entrance" ]; then
+    recalc=0
+    echo "Processing dataset ${dataset}..."
+    if [[ "$subset" == "train" || "$subset" == "both" ]]; then
+        echo "Processing training data..."
+        in_path="${common}/Entrance/train"
+        for i in $(seq -w 001 012)
+        do
+            echo "clip ${i}"
+            python3 run_flow_video.py --in_path="${in_path}/${i}" --out_file="${in_path}/${i}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
+    if [[ "$subset" == "test" || "$subset" == "both" ]]; then
+        echo "Processing test data..."
+        in_path="${common}/Entrance/test"
+        for i in $(seq -w 001 076)
+        do
+            echo "clip ${i}"
+            python3 run_flow_video.py --in_path="${in_path}/${i}" --out_file="${in_path}/${i}_full.npy" --scale 3 --recalc ${recalc}
+        done
     fi
 else
     echo "Unknown dataset ${dataset}"
