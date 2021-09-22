@@ -149,6 +149,27 @@ elif [ "$dataset" == "Entrance" ]; then
             python3 run_flow_video.py --in_path="${in_path}/${i}" --out_file="${in_path}/${i}_full.npy" --scale 3 --recalc ${recalc}
         done
     fi
+elif [ "$dataset" == "UCFcrime" ]; then
+    recalc=0
+    echo "Processing dataset ${dataset}..."
+    if [[ "$subset" == "train" || "$subset" == "both" ]]; then
+        echo "Processing training data..."
+        in_path="${common}/UCF_Crime/tmp/anomaly_detection/clips/Train"
+        for file in ${in_path}/*.mp4
+        do
+            echo "clip ${file}"
+            python3 run_flow_video.py --in_path="${file%.*}.mp4" --out_file="${file%.*}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
+    if [[ "$subset" == "test" || "$subset" == "both" ]]; then
+        echo "Processing test data..."
+        in_path="${common}/UCF_Crime/tmp/anomaly_detection/clips/Test"
+        for file in ${in_path}/*.mp4
+        do
+            echo "clip ${file}"
+            python3 run_flow_video.py --in_path="${file%.*}.mp4" --out_file="${file%.*}_full.npy" --scale 3 --recalc ${recalc}
+        done
+    fi
 else
     echo "Unknown dataset ${dataset}"
     exit 1

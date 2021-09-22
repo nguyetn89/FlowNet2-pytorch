@@ -14,6 +14,9 @@ import warnings
 warnings.filterwarnings("ignore")
 
 
+MAX_NUM_FRAME = 7500
+
+
 def load_image_pair(path1, path2, dest_size=None):
     img1 = cv2.imread(path1)
     img1 = cv2.cvtColor(img1, cv2.COLOR_BGR2RGB)
@@ -87,6 +90,18 @@ def load_video_frames(in_path, dest_size=None, save_file=False):
     return data
 
 
+def should_skip(file_path: str, recalc: int) -> bool:
+    if not os.path.exists(file_path) or recalc == 1:
+        return False
+    if os.path.getsize(file_path) < 2048:
+        return False
+    try:
+        np.load(file_path)
+        return True
+    except:
+        return False
+
+
 if __name__ == '__main__':
     # obtain the necessary args for construct the flownet framework
     parser = argparse.ArgumentParser()
@@ -100,6 +115,7 @@ if __name__ == '__main__':
     parser.add_argument("--width", type=int, default=192)
     parser.add_argument("--scale", type=int, default=3)
     parser.add_argument("--visualize", type=int, default=0)
+    parser.add_argument("--auto_split", type=int, default=0)
 
     args = parser.parse_args()
     args.fp16 = False
@@ -134,39 +150,59 @@ if __name__ == '__main__':
         if args.visualize != 0:
             visualize_flow(data)
     else:
-        if os.path.exists(args.out_file) and args.recalc == 0:
-            print("File existed -> skip!!!")
+        if should_skip(args.out_file, args.recalc):
+            print(f"Existed: {args.out_file} -> skip!!!")
         else:
             data = load_video_frames(args.in_path, dest_size=None)
             n_frame = len(data) - 1  # -1 because we consider pairs of frames
-            outflows = []
-            for i in range(0, n_frame, args.batch):
-                # determine frame indices in batch
-                idx0, idx1 = i, min(i + args.batch, n_frame)
-                # forming data batch
-                frames_first = data[idx0:idx1]
-                frames_second = data[idx0+1:idx1+1]
-                if scale > 1:
-                    frames_first = [cv2.resize(frame, upscaled_size) for frame in frames_first]
-                    frames_second = [cv2.resize(frame, upscaled_size) for frame in frames_second]
-                pairs = list(zip(frames_first, frames_second))
-                # transpose data and feed into network
-                pairs = np.array([np.array(pair).transpose(3, 0, 1, 2) for pair in pairs])
-                im = torch.from_numpy(pairs.astype(np.float32)).to(device)
-                # get out optical flow
-                flows = net(im)
-                outflows += [cv2.resize(flow.data.cpu().numpy().transpose(1, 2, 0), base_size) for flow in flows]
-            outflows += [np.zeros_like(outflows[-1])]
-            outflows = np.array(outflows).astype(np.float32)
-            assert len(outflows) == len(data)
-            data = np.array([cv2.resize(img, base_size) for img in data])
-            print("imgs:", data.shape)
-            print("flows:", outflows.shape)
+            # check to split video first
+            if not args.auto_split or n_frame <= MAX_NUM_FRAME:
+                frame_indices_as_clips = [[0, n_frame]]
+                out_files = [args.out_file]
+            else:
+                n_clips = int(np.ceil(n_frame/MAX_NUM_FRAME))
+                n_frame_per_clip = n_frame//n_clips
+                frame_indices_as_clips = []
+                out_files = []
+                for i in range(n_clips):
+                    out_file = args.out_file.replace(".npy", f"_{i+1}.npy")
+                    if should_skip(out_file, args.recalc):
+                        print(f"Existed: {out_file} -> skip!!!")
+                        continue
+                    out_files.append(out_file)
+                    frame_indices_as_clips.append([i*n_frame_per_clip, (i+1)*n_frame_per_clip])
+            #
+            for clip_idx in range(len(out_files)):
+                out_file = out_files[clip_idx]
+                start_idx, end_idx = frame_indices_as_clips[clip_idx]
 
-            # concatenate data and save (n, h, w, c)
-            outdata = np.concatenate((data, outflows), axis=3)
-            np.save(args.out_file, outdata)
-            print("output data:", outdata.shape)
+                outflows = []
+                for i in range(start_idx, end_idx, args.batch):
+                    # determine frame indices in batch
+                    idx0, idx1 = i, min(i + args.batch, n_frame)
+                    # forming data batch
+                    frames_first = data[idx0:idx1]
+                    frames_second = data[idx0+1:idx1+1]
+                    if scale > 1:
+                        frames_first = [cv2.resize(frame, upscaled_size) for frame in frames_first]
+                        frames_second = [cv2.resize(frame, upscaled_size) for frame in frames_second]
+                    pairs = list(zip(frames_first, frames_second))
+                    # transpose data and feed into network
+                    pairs = np.array([np.array(pair).transpose(3, 0, 1, 2) for pair in pairs])
+                    im = torch.from_numpy(pairs.astype(np.float32)).to(device)
+                    # get out optical flow
+                    flows = net(im)
+                    outflows += [cv2.resize(flow.data.cpu().numpy().transpose(1, 2, 0), base_size) for flow in flows]
+                outflows += [np.zeros_like(outflows[-1])]
+                outflows = np.array(outflows).astype(np.float32)
+                data = np.array([cv2.resize(img, base_size) for img in data])
+                print("imgs:", data.shape)
+                print("flows:", outflows.shape)
+
+                # concatenate data and save (n, h, w, c)
+                outdata = np.concatenate((data, outflows), axis=3)
+                np.save(out_file, outdata)
+                print("output data:", outdata.shape)
 
             # visualizing only for checking
             if args.visualize != 0:
